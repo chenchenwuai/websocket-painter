@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>简易多人画板</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <link type="text/css" rel="stylesheet" href="./css/main.css" />
+  </head>
+  <body>
+    <div id="menu">
+      <span class="submenu"> <span id="status">🟡</span>&nbsp; SOCKET </span>
+      <span class="submenu">
+        <span id="colors">
+          <span>⚫️</span>
+          <span>🔵</span>
+          <span>🟢</span>
+          <span>🟣</span>
+          <span>🔴</span>
+          <span>🟤</span>
+          <span>🟠</span>
+          <span>🟡</span>
+          <span>⚪️</span> </span
+        >&nbsp;
+      </span>
+    </div>
+    <div id="cursors"></div>
+    <script type="module">
+      import { Painter } from "./js/Painter.js";
+      import { Recorder } from "./js/Recorder.js";
+
+      // Canvas
+
+      const canvas = document.createElement("canvas");
+      canvas.id = "canvas";
+      canvas.width = window.innerWidth * window.devicePixelRatio;
+      canvas.height = window.innerHeight * window.devicePixelRatio;
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+      document.body.appendChild(canvas);
+
+      const context = canvas.getContext("2d");
+      context.lineWidth = 2 * window.devicePixelRatio;
+      context.fillStyle = "rgb(238, 238, 238)";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      //
+
+      let painters = {};
+      let recorder = null;
+
+      // WebSockets
+
+      // const ws = new WebSocket("wss://101.34.18.110:9001");
+      const ws = new WebSocket("wss://xxcc.fun/painter/wss");
+      ws.binaryType = "arraybuffer";
+
+      ws.addEventListener("open", function (event) {
+        recorder = new Recorder(context, ws);
+
+        canvas.addEventListener("pointerdown", onPointerDown);
+        canvas.addEventListener("pointerup", onPointerUp);
+
+        document.getElementById("status").textContent = "🟢";
+
+        // Colors
+
+        let colors = document.getElementById("colors");
+
+        for (let i = 0; i < colors.children.length; i++) {
+          let child = colors.children[i];
+          child.addEventListener("click", function (event) {
+            recorder.color(i);
+          });
+        }
+      });
+
+      ws.addEventListener("close", function (event) {
+        document.getElementById("status").textContent = "🔴";
+      });
+
+      ws.addEventListener("message", function (event) {
+        let dataview = new DataView(event.data);
+        let id = dataview.getUint8(0);
+
+        if (painters[id] === undefined) {
+          let container = document.getElementById("cursors");
+          painters[id] = new Painter(context, container);
+        }
+
+        painters[id].execute(dataview);
+      });
+
+      // Recorder
+
+      let ptime = 0;
+
+      function onPointerMove(event) {
+        if (event.isPrimary) {
+          // Throttle to 20Hz
+
+          const throttle = 1000 / 150;
+          const time = event.timeStamp;
+
+          if (time < ptime + throttle) return;
+
+          ptime = time;
+
+          //
+
+          const x = parseInt(event.pageX * window.devicePixelRatio);
+          const y = parseInt(event.pageY * window.devicePixelRatio);
+
+          recorder.move(x, y);
+        }
+      }
+
+      function onPointerDown(event) {
+        if (event.isPrimary && event.button === 0) {
+          const x = parseInt(event.pageX * window.devicePixelRatio);
+          const y = parseInt(event.pageY * window.devicePixelRatio);
+
+          recorder.down(x, y);
+
+          canvas.addEventListener("pointermove", onPointerMove);
+        }
+      }
+
+      function onPointerUp(event) {
+        if (event.isPrimary && event.button === 0) {
+          recorder.up();
+
+          canvas.removeEventListener("pointermove", onPointerMove);
+        }
+      }
+    </script>
+  </body>
+</html>
